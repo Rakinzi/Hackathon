@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Saturation Adjustment Tool</title>
+    <style>
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+        }
+        .image-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+        }
+        .image-container img {
+            width: 100%;
+            height: auto;
+        }
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            clip-path: inset(0 50% 0 0);
+        }
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            max-width: 600px;
+        }
+        .slider-container input[type="range"] {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Image Saturation Adjustment Tool</h1>
+
+        <div>
+            <h2>Upload local image:</h2>
+            <input type="file" accept="image/*" id="fileInput" />
+        </div>
+
+        <div>
+            <h2>Or enter image URL:</h2>
+            <input type="url" id="imageUrlInput" placeholder="https://example.com/image.jpg" />
+            <button id="loadUrlButton">Load</button>
+        </div>
+
+        <div>
+            <h2>Or paste image:</h2>
+            <div id="pasteArea" style="border: 2px dashed #ccc; padding: 20px; text-align: center; cursor: pointer;">Click here and paste image (Ctrl+V)</div>
+        </div>
+
+        <div class="image-container">
+            <img id="originalImage" src="" alt="Original Image" />
+            <div id="saturationOverlay" class="overlay">
+                <img id="saturatedImage" src="" alt="Saturated Image" />
+            </div>
+        </div>
+
+        <div class="slider-container">
+            <label for="saturationSlider">Saturation: <span id="saturationValue">100</span>%</label>
+            <input type="range" id="saturationSlider" min="0" max="200" value="100" />
+            <label for="comparisonSlider">Image Comparison:</label>
+            <input type="range" id="comparisonSlider" min="0" max="100" value="50" />
+        </div>
+
+        <canvas id="canvas" style="display: none;"></canvas>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const imageUrlInput = document.getElementById('imageUrlInput');
+        const loadUrlButton = document.getElementById('loadUrlButton');
+        const pasteArea = document.getElementById('pasteArea');
+        const originalImage = document.getElementById('originalImage');
+        const saturatedImage = document.getElementById('saturatedImage');
+        const saturationSlider = document.getElementById('saturationSlider');
+        const saturationValue = document.getElementById('saturationValue');
+        const comparisonSlider = document.getElementById('comparisonSlider');
+        const saturationOverlay = document.getElementById('saturationOverlay');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        function adjustSaturation(imgData, saturation) {
+            const data = imgData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+
+                const max = Math.max(r, g, b);
+                const min = Math.min(r, g, b);
+                const l = (max + min) / 2;
+
+                if (max !== min) {
+                    const d = max - min;
+                    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                    let newS;
+
+                    if (saturation <= 100) {
+                        newS = s * (saturation / 100);
+                    } else {
+                        const t = (saturation - 100) / 100;
+                        newS = s + (1 - s) * t;
+                    }
+
+                    const factor = newS / s;
+
+                    data[i] = Math.round(Math.min(255, Math.max(0, l + (r - l) * factor)));
+                    data[i + 1] = Math.round(Math.min(255, Math.max(0, l + (g - l) * factor)));
+                    data[i + 2] = Math.round(Math.min(255, Math.max(0, l + (b - l) * factor)));
+                }
+            }
+            return imgData;
+        }
+
+        function updateSaturation() {
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+            img.onload = function() {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const adjustedData = adjustSaturation(imageData, saturationSlider.value);
+                ctx.putImageData(adjustedData, 0, 0);
+                saturatedImage.src = canvas.toDataURL();
+            };
+            img.src = originalImage.src;
+        }
+
+        function handleImage(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                originalImage.src = e.target.result;
+                updateSaturation();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files[0]) {
+                handleImage(fileInput.files[0]);
+            }
+        });
+
+        loadUrlButton.addEventListener('click', function() {
+            originalImage.src = imageUrlInput.value;
+            updateSaturation();
+        });
+
+        pasteArea.addEventListener('paste', function(event) {
+            const items = event.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    handleImage(blob);
+                    break;
+                }
+            }
+        });
+
+        saturationSlider.addEventListener('input', function() {
+            saturationValue.textContent = saturationSlider.value;
+            updateSaturation();
+        });
+
+        comparisonSlider.addEventListener('input', function() {
+            saturationOverlay.style.clipPath = `inset(0 ${100 - comparisonSlider.value}% 0 0)`;
+        });
+    </script>
+</body>
+</html>
